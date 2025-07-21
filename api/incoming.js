@@ -12,7 +12,7 @@ const seen = new Map();   // in-memory dedupe
 // Tell Vercel not to parse body (we need raw multipart)
 export const config = { api: { bodyParser: false } };
 
-app.post('/api/incoming', upload.none(), async (req, res) => {
+app.post('/', upload.none(), async (req, res) => {
    let payload;
    try {
       payload = JSON.parse(req.body.payload_json);
