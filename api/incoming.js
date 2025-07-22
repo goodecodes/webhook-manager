@@ -1,8 +1,7 @@
-// api/incoming.js
-import serverless from 'serverless-http';
-import express from 'express';
-import multer from 'multer';
-import axios from 'axios';
+const serverless = require('serverless-http');
+const express = require('express');
+const multer = require('multer');
+const axios = require('axios');
 
 const app = express();
 const upload = multer();
@@ -11,6 +10,12 @@ const seen = new Map();   // in-memory dedupe
 
 // Tell Vercel not to parse body (we need raw multipart)
 export const config = { api: { bodyParser: false } };
+
+// api/health.js
+export default function handler(req, res) {
+   res.status(200).send('OK');
+}
+
 
 app.post('/', upload.none(), async (req, res) => {
    // 1) Log what Vercel actually sees
@@ -46,3 +51,6 @@ app.post('/', upload.none(), async (req, res) => {
 
    res.sendStatus(200);
 });
+
+
+module.exports = serverless(app);
