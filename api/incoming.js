@@ -12,6 +12,11 @@ const seen = new Map();   // in-memory dedupe
 // Tell Vercel not to parse body (we need raw multipart)
 export const config = { api: { bodyParser: false } };
 
+// health‐check endpoint
+app.get('/', (_req, res) => {
+   return res.status(200).send('✅ Function is up and running');
+});
+
 app.post('/', upload.none(), async (req, res) => {
    let payload;
    try {
