@@ -1,24 +1,24 @@
 // api/incoming.js
+const { Busboy } = require('busboy');
+const axios = require('axios');
 
-import { Busboy } from 'busboy';
-import axios from 'axios';
+const DEDUP_WINDOW = 1_000;       // ms
+const seen = new Map();   // txnText → timestamp
 
-export const config = {
-   api: { bodyParser: false }    // disable Vercel’s default parser
+// Tell Vercel not to parse the body
+module.exports.config = {
+   api: { bodyParser: false }
 };
 
-const DEDUP_WINDOW = 1_000;      // ms
-const seen = new Map();  // txnText → timestamp
-
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
    // ─── Health-check ───────────────────────────────────────────────
    if (req.method === 'GET') {
       return res
          .status(200)
-         .json({ status: '✅ incoming.js is live', now: Date.now() });
+         .json({ status: '✅ incoming.js is live (CJS)', now: Date.now() });
    }
 
-   // ─── Only accept multipart POSTs ────────────────────────────────
+   // ─── Only allow multipart POSTs ─────────────────────────────────
    if (req.method !== 'POST') {
       res.setHeader('Allow', ['GET', 'POST']);
       return res.status(405).end(`Method ${req.method} Not Allowed`);
@@ -28,7 +28,7 @@ export default async function handler(req, res) {
       return res.status(415).end('Unsupported Media Type');
    }
 
-   // ─── Parse the form and pull out payload_json ──────────────────
+   // ─── Parse the form and extract payload_json ────────────────────
    const busboy = new Busboy({ headers: req.headers });
    let payloadJson = '';
 
@@ -37,20 +37,19 @@ export default async function handler(req, res) {
    });
 
    busboy.on('finish', async () => {
-      // 1) JSON parse
       let data;
-      try { data = JSON.parse(payloadJson); }
-      catch (err) {
+      try {
+         data = JSON.parse(payloadJson);
+      } catch {
          return res.status(400).end('Invalid JSON in payload_json');
       }
 
-      // 2) Extract the human-readable line
       const txnText = data.extra?.message;
       if (!txnText) {
          return res.status(400).end('Missing extra.message');
       }
 
-      // 3) Dedupe within DEDUP_WINDOW
+      // ─── Dedupe ───────────────────────────────────────────────────
       const now = Date.now();
       const last = seen.get(txnText) || 0;
       if (now - last < DEDUP_WINDOW) {
@@ -58,12 +57,11 @@ export default async function handler(req, res) {
          return res.sendStatus(204);
       }
       seen.set(txnText, now);
-      // prune old entries
       for (const [text, ts] of seen) {
          if (now - ts > DEDUP_WINDOW) seen.delete(text);
       }
 
-      // 4) Forward to Discord
+      // ─── Forward to Discord webhook ───────────────────────────────
       try {
          await axios.post(
             process.env.DISCORD_WEBHOOK_URL,
@@ -77,6 +75,5 @@ export default async function handler(req, res) {
       }
    });
 
-   // pipe the incoming request into Busboy
    req.pipe(busboy);
-}
+};
