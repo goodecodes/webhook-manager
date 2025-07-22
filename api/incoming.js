@@ -10,6 +10,7 @@ const DEDUP_WINDOW = 1_000;     // 1 second
 const seen = new Map(); // message→timestamp
 
 export default async function handler(req, res) {
+   console.log('⤵️ DISCORD_WEBHOOK_URL:', process.env.DISCORD_WEBHOOK_URL);
    // ─── Health check ─────────────────────────
    if (req.method === 'GET') {
       return res
