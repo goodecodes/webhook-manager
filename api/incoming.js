@@ -1,5 +1,5 @@
 // api/incoming.js
-const { Busboy } = require('busboy');
+const Busboy = require('busboy');
 const axios = require('axios');
 
 const DEDUP_WINDOW = 1_000;       // ms
