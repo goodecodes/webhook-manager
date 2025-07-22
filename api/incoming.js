@@ -1,6 +1,6 @@
 // api/incoming.js
 
-import Busboy from 'busboy';
+import { Busboy } from 'busboy';
 import axios from 'axios';
 
 export const config = {
