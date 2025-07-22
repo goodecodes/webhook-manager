@@ -71,7 +71,9 @@ export default async function handler(req, res) {
          console.log('✅ Forwarded:', txnText);
          return res.sendStatus(200);
       } catch (err) {
-         console.error('❌ Discord send error:', err);
+         console.error('❌ Discord send error status:', err.response?.status);
+         console.error('❌ Discord send error data:', err.response?.data);
+         console.error(err.stack);
          return res.status(500).end('Error forwarding to Discord');
       }
    });
