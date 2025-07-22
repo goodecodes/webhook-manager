@@ -48,7 +48,7 @@ export default async function handler(req, res) {
       const now = Date.now();
       const last = seen.get(txnText) || 0;
       if (now - last < DEDUP_WINDOW) {
-         console.log('↩️ Duplicate, skipping:', txnText);
+         console.log('Duplicate, skipping:', txnText);
          return res.status(204).end();
       }
       seen.set(txnText, now);
@@ -56,12 +56,45 @@ export default async function handler(req, res) {
          if (now - ts > DEDUP_WINDOW) seen.delete(text);
       }
 
+      let title;
+      if (lower.includes('deposited')) {
+         title = 'Deposit made';
+      } else if (lower.includes('withdrawn')) {
+         title = 'Withdrawal made';
+      } else {
+         title = 'Clan Coffer Update';
+      }
+
+      const embedPayload = data.embeds?.[0] || {
+         description: txnText,
+         color: 0x00ff00,
+         timestamp: new Date().toISOString(),
+      };
+
       // forward
       try {
-         await axios.post(
-            process.env.DISCORD_WEBHOOK_URL,
-            { content: txnText }
-         );
+         //await axios.post(
+         //   process.env.DISCORD_WEBHOOK_URL,
+         //   { content: txnText }
+         //);
+
+
+         await axios.post(process.env.DISCORD_WEBHOOK_URL, {
+
+            // username: 'StackBot',
+            avatar_url: 'https://i.imgur.com/jsjW0dF.png',
+            embeds: [
+               {
+
+                  // ...embedPayload,
+
+                  title,
+                  description: embedPayload.description || txnText,
+                  timestamp: embedPayload.timestamp ?? new Date().toISOString(),
+               },
+            ],
+         });
+
          console.log('✅ Forwarded:', txnText);
          return res.status(200).end();
       } catch (err) {
