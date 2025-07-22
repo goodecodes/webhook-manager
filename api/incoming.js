@@ -56,6 +56,9 @@ export default async function handler(req, res) {
          if (now - ts > DEDUP_WINDOW) seen.delete(text);
       }
 
+      // define `lower` here
+      const lower = txnText.toLowerCase();
+
       let title;
       if (lower.includes('deposited')) {
          title = 'Deposit made';
