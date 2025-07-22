@@ -13,35 +13,36 @@ const seen = new Map();   // in-memory dedupe
 export const config = { api: { bodyParser: false } };
 
 app.post('/', upload.none(), async (req, res) => {
+   // 1) Log what Vercel actually sees
+   console.log('🔍 Headers:', req.headers['content-type']);
+   console.log('🔍 Body fields:', req.body);
+
    let payload;
    try {
       payload = JSON.parse(req.body.payload_json);
-   } catch {
+   } catch (err) {
+      console.error('❌ JSON parse failed:', err);
       return res.sendStatus(400);
    }
 
-   const txnText = payload.extra?.message;
-   if (!txnText) return res.sendStatus(400);
+   // 2) Verify your WEBHOOK URL is present
+   console.log('🔗 Webhook URL:', process.env.DISCORD_WEBHOOK_URL);
 
-   const now = Date.now();
-   if ((seen.get(txnText) || 0) + DEDUP_WINDOW > now) {
-      console.log('↩️ Duplicate, skipping:', txnText);
-      return res.sendStatus(204);
+   const txnText = payload.extra?.message;
+   if (!txnText) {
+      console.log('❌ No extra.message found');
+      return res.sendStatus(400);
    }
-   seen.set(txnText, now);
-   // prune old keys
-   for (const [text, ts] of seen) {
-      if (now - ts > DEDUP_WINDOW) seen.delete(text);
-   }
+
+   // existing dedupe logic…
 
    console.log('✅ Forwarding via webhook:', txnText);
    try {
-      await axios.post(process.env.DISCORD_WEBHOOK_URL, { content: txnText });
-      console.log('   ↪️ Sent');
+      const resp = await axios.post(process.env.DISCORD_WEBHOOK_URL, { content: txnText });
+      console.log(`   ↪️ Discord responded ${resp.status}`);
    } catch (err) {
-      console.error('   ❌ Failed to send:', err);
+      console.error('   ❌ Failed to send:', err.response?.status, err.response?.data || err);
    }
+
    res.sendStatus(200);
 });
-
-export default serverless(app);
