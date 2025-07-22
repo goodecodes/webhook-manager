@@ -1,4 +1,3 @@
-// api/incoming.js
 import { IncomingForm } from 'formidable';
 import axios from 'axios';
 
@@ -50,7 +49,7 @@ export default async function handler(req, res) {
       const last = seen.get(txnText) || 0;
       if (now - last < DEDUP_WINDOW) {
          console.log('↩️ Duplicate, skipping:', txnText);
-         return res.status(204).end();               // <— no res.sendStatus
+         return res.status(204).end();
       }
       seen.set(txnText, now);
       for (const [text, ts] of seen) {
@@ -64,12 +63,12 @@ export default async function handler(req, res) {
             { content: txnText }
          );
          console.log('✅ Forwarded:', txnText);
-         return res.status(200).end();               // <— no res.sendStatus
+         return res.status(200).end();
       } catch (err) {
          console.error('❌ Discord send error status:', err.response?.status);
          console.error('❌ Discord send error data:', err.response?.data);
          console.error(err.stack);
-         // return the discord error so you can see it in curl:
+
          const status = err.response?.status || 502;
          const data = err.response?.data || 'Unknown error';
          return res.status(status).json({ error: data });
