@@ -51,6 +51,31 @@
 
 //export default serverless(app);
 
-export default function handler(req, res) {
-   res.status(200).json({ message: '👋 incoming.js is alive!' });
-}
+//export default function handler(req, res) {
+//   res.status(200).json({ message: '👋 incoming.js is alive!' });
+//}
+// api/incoming.js
+import serverless from 'serverless-http';
+import express from 'express';
+
+const app = express();
+
+// Disable Vercel’s default body parser so Express can handle raw bodies if needed
+export const config = { api: { bodyParser: false } };
+
+// 1️⃣ Health check via Express
+app.get('/', (_req, res) => {
+   return res
+      .status(200)
+      .json({ message: '✅ Express is up!' });
+});
+
+// 2️⃣ Simple POST echo
+app.post('/', express.text(), (req, res) => {
+   // echo back whatever body you sent
+   return res
+      .status(200)
+      .json({ message: 'POST received', body: req.body });
+});
+
+export default serverless(app);
