@@ -1,7 +1,8 @@
-const serverless = require('serverless-http');
-const express = require('express');
-const multer = require('multer');
-const axios = require('axios');
+// api/incoming.js
+import serverless from 'serverless-http';
+import express from 'express';
+import multer from 'multer';
+import axios from 'axios';
 
 const app = express();
 const upload = multer();
@@ -11,46 +12,36 @@ const seen = new Map();   // in-memory dedupe
 // Tell Vercel not to parse body (we need raw multipart)
 export const config = { api: { bodyParser: false } };
 
-// api/health.js
-export default function handler(req, res) {
-   res.status(200).send('OK');
-}
-
-
 app.post('/', upload.none(), async (req, res) => {
-   // 1) Log what Vercel actually sees
-   console.log('🔍 Headers:', req.headers['content-type']);
-   console.log('🔍 Body fields:', req.body);
-
    let payload;
    try {
       payload = JSON.parse(req.body.payload_json);
-   } catch (err) {
-      console.error('❌ JSON parse failed:', err);
+   } catch {
       return res.sendStatus(400);
    }
-
-   // 2) Verify your WEBHOOK URL is present
-   console.log('🔗 Webhook URL:', process.env.DISCORD_WEBHOOK_URL);
 
    const txnText = payload.extra?.message;
-   if (!txnText) {
-      console.log('❌ No extra.message found');
-      return res.sendStatus(400);
-   }
+   if (!txnText) return res.sendStatus(400);
 
-   // existing dedupe logic…
+   const now = Date.now();
+   if ((seen.get(txnText) || 0) + DEDUP_WINDOW > now) {
+      console.log('↩️ Duplicate, skipping:', txnText);
+      return res.sendStatus(204);
+   }
+   seen.set(txnText, now);
+   // prune old keys
+   for (const [text, ts] of seen) {
+      if (now - ts > DEDUP_WINDOW) seen.delete(text);
+   }
 
    console.log('✅ Forwarding via webhook:', txnText);
    try {
-      const resp = await axios.post(process.env.DISCORD_WEBHOOK_URL, { content: txnText });
-      console.log(`   ↪️ Discord responded ${resp.status}`);
+      await axios.post(process.env.DISCORD_WEBHOOK_URL, { content: txnText });
+      console.log('   ↪️ Sent');
    } catch (err) {
-      console.error('   ❌ Failed to send:', err.response?.status, err.response?.data || err);
+      console.error('   ❌ Failed to send:', err);
    }
-
    res.sendStatus(200);
 });
 
-
-module.exports = serverless(app);
+export default serverless(app);
