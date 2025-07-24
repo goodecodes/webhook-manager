@@ -1,5 +1,7 @@
 import { IncomingForm } from 'formidable';
 import axios from 'axios';
+import { text } from 'express';
+const DISCORD_API = 'https://discord.com/api/v10';
 
 export const config = {
    api: { bodyParser: false }
@@ -82,21 +84,42 @@ export default async function handler(req, res) {
          //);
 
 
-         await axios.post(process.env.DISCORD_WEBHOOK_URL, {
+         //await axios.post(process.env.DISCORD_WEBHOOK_URL, {
 
-            // username: 'StackBot',
-            avatar_url: 'https://i.imgur.com/jsjW0dF.png',
-            embeds: [
-               {
+         //   // username: 'StackBot',
+         //   avatar_url: 'https://i.imgur.com/jsjW0dF.png',
+         //   embeds: [
+         //      {
 
-                  // ...embedPayload,
+         //         // ...embedPayload,
 
-                  title,
-                  description: embedPayload.description || txnText,
-                  timestamp: embedPayload.timestamp ?? new Date().toISOString(),
+         //         title,
+         //         description: embedPayload.description || txnText,
+         //         timestamp: embedPayload.timestamp ?? new Date().toISOString(),
+         //      },
+         //   ],
+         //});
+
+         const embed = {
+            title,
+            description: embedPayload.description || txnText,
+            timestamp: embedPayload.timestamp ?? new Date().toISOString(),
+            color: title === 'Deposit Made' ? 0x00ff00 : 0xe74c3c,
+            footer: {
+               text: 'Clan Chat Coffer Notification'
+            }
+         };
+
+         await axios.post(
+            `${DISCORD_API}/channels/${process.env.TARGET_CHANNEL_ID}/messages`,
+            { embeds: [embed] },
+            {
+               headers: {
+                  Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+                  'Content-Type': 'application/json',
                },
-            ],
-         });
+            }
+         );
 
          console.log('✅ Forwarded:', txnText);
          return res.status(200).end();
