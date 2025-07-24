@@ -61,9 +61,9 @@ export default async function handler(req, res) {
 
       let title;
       if (lower.includes('deposited')) {
-         title = 'Deposit made';
+         title = 'Deposit Made';
       } else if (lower.includes('withdrawn')) {
-         title = 'Withdrawal made';
+         title = 'Withdrawal Made';
       } else {
          title = 'Clan Coffer Update';
       }
