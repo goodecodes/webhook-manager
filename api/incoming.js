@@ -106,7 +106,7 @@ export default async function handler(req, res) {
             timestamp: embedPayload.timestamp ?? new Date().toISOString(),
             color: title === 'Deposit Made' ? 0x00ff00 : 0xe74c3c,
             footer: {
-               text: '<:App_Directory_All_dark:1394059271854882827> Clan Chat Notification'
+               text: 'Clan Chat Notification'
             }
          };
 
