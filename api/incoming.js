@@ -104,9 +104,9 @@ export default async function handler(req, res) {
             title: `<:Discord_category_collapsed_white:1394059288619782226> ${title}`,
             description: embedPayload.description || txnText,
             timestamp: embedPayload.timestamp ?? new Date().toISOString(),
-            color: title === 'Deposit Made' ? 0x00ff00 : 0xe74c3c,
+            color: title === 'Deposit Made' ? 0x27ae60 : 0xe74c3c,
             footer: {
-               text: 'Transaction applied. Ensure plugin coverage to maintain accuracy.'
+               text: 'Ensure plugin coverage to maintain accuracy.'
             }
          };
 
