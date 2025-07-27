@@ -106,7 +106,7 @@ export default async function handler(req, res) {
             timestamp: embedPayload.timestamp ?? new Date().toISOString(),
             color: title === 'Deposit Made' ? 0x00ff00 : 0xe74c3c,
             footer: {
-               text: 'Chat Notifications'
+               text: 'Embed updated to reflect transaction.'
             }
          };
 
