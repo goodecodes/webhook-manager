@@ -7,7 +7,7 @@ export const config = {
    api: { bodyParser: false }
 };
 
-const DEDUP_WINDOW = 1_000;
+const DEDUP_WINDOW = 2_000;
 const seen = new Map();
 
 export default async function handler(req, res) {
