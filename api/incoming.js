@@ -1,20 +1,49 @@
 import { IncomingForm } from 'formidable';
 import axios from 'axios';
-import { text } from 'express';
+import crypto from 'crypto';
+
 const DISCORD_API = 'https://discord.com/api/v10';
 
 export const config = {
-   api: { bodyParser: false }
+   api: { bodyParser: false },
 };
 
-const DEDUP_WINDOW = 2_000;
-const seen = new Map();
+// Dedupe helper using Upstash Redis
+async function isDuplicate(txnText) {
+   const key = 'dedupe:' + crypto.createHash('sha1').update(txnText).digest('hex');
+   const url = `${process.env.UPSTASH_REST_URL}/get/${key}`;
+
+   const getRes = await fetch(url, {
+      headers: {
+         Authorization: `Bearer ${process.env.UPSTASH_REST_TOKEN}`,
+      },
+   });
+
+   const alreadySeen = await getRes.text();
+   if (alreadySeen !== '') {
+      console.log('🔁 Duplicate via Redis:', txnText);
+      return true;
+   }
+
+   // store key with 10s expiry to avoid replays
+   const setRes = await fetch(`${process.env.UPSTASH_REST_URL}/set/${key}`, {
+      method: 'POST',
+      headers: {
+         Authorization: `Bearer ${process.env.UPSTASH_REST_TOKEN}`,
+         'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+         value: '1',
+         EX: 10,
+      }),
+   });
+
+   return false;
+}
 
 export default async function handler(req, res) {
    if (req.method === 'GET') {
-      return res
-         .status(200)
-         .json({ alive: true, now: Date.now() });
+      return res.status(200).json({ alive: true, now: Date.now() });
    }
 
    if (req.method !== 'POST') {
@@ -46,21 +75,13 @@ export default async function handler(req, res) {
          return res.status(400).end('Missing extra.message');
       }
 
-      // dedupe
-      const now = Date.now();
-      const last = seen.get(txnText) || 0;
-      if (now - last < DEDUP_WINDOW) {
-         console.log('Duplicate, skipping:', txnText);
+      // Redis deduplication
+      if (await isDuplicate(txnText)) {
          return res.status(204).end();
       }
-      seen.set(txnText, now);
-      for (const [text, ts] of seen) {
-         if (now - ts > DEDUP_WINDOW) seen.delete(text);
-      }
 
-      // define `lower` here
+      // Format embed
       const lower = txnText.toLowerCase();
-
       let title;
       if (lower.includes('deposited')) {
          title = 'Deposit Made';
@@ -76,40 +97,18 @@ export default async function handler(req, res) {
          timestamp: new Date().toISOString(),
       };
 
-      // forward
+      const embed = {
+         title: `<:Discord_category_collapsed_white:1394059288619782226> ${title}`,
+         description: embedPayload.description || txnText,
+         timestamp: embedPayload.timestamp ?? new Date().toISOString(),
+         color: title === 'Deposit Made' ? 0x27ae60 : 0xe74c3c,
+         footer: {
+            text: 'Chat Notification. Ensure plugin coverage for accuracy',
+         },
+      };
+
+      // Forward to Discord
       try {
-         //await axios.post(
-         //   process.env.DISCORD_WEBHOOK_URL,
-         //   { content: txnText }
-         //);
-
-
-         //await axios.post(process.env.DISCORD_WEBHOOK_URL, {
-
-         //   // username: 'StackBot',
-         //   avatar_url: 'https://i.imgur.com/jsjW0dF.png',
-         //   embeds: [
-         //      {
-
-         //         // ...embedPayload,
-
-         //         title,
-         //         description: embedPayload.description || txnText,
-         //         timestamp: embedPayload.timestamp ?? new Date().toISOString(),
-         //      },
-         //   ],
-         //});
-
-         const embed = {
-            title: `<:Discord_category_collapsed_white:1394059288619782226> ${title}`,
-            description: embedPayload.description || txnText,
-            timestamp: embedPayload.timestamp ?? new Date().toISOString(),
-            color: title === 'Deposit Made' ? 0x27ae60 : 0xe74c3c,
-            footer: {
-               text: 'Chat Notification. Ensure plugin coverage for accuracy'
-            }
-         };
-
          await axios.post(
             `${DISCORD_API}/channels/${process.env.TARGET_CHANNEL_ID}/messages`,
             { embeds: [embed] },
