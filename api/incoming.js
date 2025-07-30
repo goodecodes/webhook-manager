@@ -11,35 +11,28 @@ export const config = {
 // Dedupe helper using Upstash Redis
 async function isDuplicate(txnText) {
    const key = 'dedupe:' + crypto.createHash('sha1').update(txnText).digest('hex');
-   const url = `${process.env.UPSTASH_REST_URL}/get/${key}`;
+   const url = `${process.env.UPSTASH_REST_URL}/set/${key}?NX=1&EX=10`;
 
-   const getRes = await fetch(url, {
-      headers: {
-         Authorization: `Bearer ${process.env.UPSTASH_REST_TOKEN}`,
-      },
-   });
-
-   const alreadySeen = await getRes.text();
-   if (alreadySeen !== '') {
-      console.log('🔁 Duplicate via Redis:', txnText);
-      return true;
-   }
-
-   // store key with 10s expiry to avoid replays
-   const setRes = await fetch(`${process.env.UPSTASH_REST_URL}/set/${key}`, {
+   const setRes = await fetch(url, {
       method: 'POST',
       headers: {
          Authorization: `Bearer ${process.env.UPSTASH_REST_TOKEN}`,
          'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-         value: '1',
-         EX: 10,
-      }),
+      body: JSON.stringify({ value: '1' }),
    });
 
-   return false;
+   const result = await setRes.text();
+
+   if (result === 'OK') {
+      console.log('✅ First time, forwarding:', txnText);
+      return false; // not a duplicate
+   }
+
+   console.log('🔁 Duplicate via Redis (atomic):', txnText);
+   return true; // already seen
 }
+
 
 export default async function handler(req, res) {
    if (req.method === 'GET') {
