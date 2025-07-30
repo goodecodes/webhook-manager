@@ -13,25 +13,34 @@ async function isDuplicate(txnText) {
    const key = 'dedupe:' + crypto.createHash('sha1').update(txnText).digest('hex');
    const url = `${process.env.UPSTASH_REST_URL}/set/${key}?NX=1&EX=10`;
 
-   const setRes = await fetch(url, {
-      method: 'POST',
-      headers: {
-         Authorization: `Bearer ${process.env.UPSTASH_REST_TOKEN}`,
-         'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ value: '1' }),
-   });
+   try {
+      const setRes = await fetch(url, {
+         method: 'POST',
+         headers: {
+            Authorization: `Bearer ${process.env.UPSTASH_REST_TOKEN}`,
+            'Content-Type': 'application/json',
+         },
+         body: JSON.stringify({ value: '1' }),
+      });
 
-   const result = await setRes.text();
+      const status = setRes.status;
+      const body = await setRes.text();
 
-   if (result === 'OK') {
-      console.log('✅ First time, forwarding:', txnText);
-      return false; // not a duplicate
+      console.log(`[Redis] Status: ${status}, Response: "${body}" for key: ${key}`);
+
+      if (body === 'OK') {
+         console.log('✅ First time, forwarding:', txnText);
+         return false; // Not a duplicate
+      }
+
+      console.log('🔁 Duplicate via Redis (atomic):', txnText);
+      return true; // Duplicate
+   } catch (err) {
+      console.error('⚠️ Redis dedupe check failed, proceeding as fallback:', err);
+      return false; // Fallback: proceed anyway if Redis fails
    }
-
-   console.log('🔁 Duplicate via Redis (atomic):', txnText);
-   return true; // already seen
 }
+
 
 
 export default async function handler(req, res) {
