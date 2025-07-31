@@ -10,25 +10,26 @@ export const config = {
 
 // Dedupe helper using Upstash Redis
 async function isDuplicate(txnText) {
-   const key = 'dedupe:' + crypto.createHash('sha1').update(txnText).digest('hex');
-   const url = `${process.env.UPSTASH_REST_URL}/set/${key}?NX=1&EX=10`;
+   // generate a unique key
+   const key =
+      'dedupe:' + crypto.createHash('sha1').update(txnText).digest('hex');
+
+   // Upstash wants: /set/<key>/<value>/EX/<seconds>/NX
+   // e.g. SET key 1 EX 10 NX
+   const url = `${process.env.UPSTASH_REST_URL}/set/${encodeURIComponent(
+      key
+   )}/1/EX/10/NX`;
 
    try {
-      const res = await axios.post(
-         url,
-         { value: '1' },
-         {
-            headers: {
-               Authorization: `Bearer ${process.env.UPSTASH_REST_TOKEN}`,
-               'Content-Type': 'application/json',
-            },
-         }
-      );
+      // note: Upstash examples use GET for REST calls
+      const res = await axios.get(url, {
+         headers: {
+            Authorization: `Bearer ${process.env.UPSTASH_REST_TOKEN}`,
+         },
+      });
 
-      const responseText = res.data;
-      console.log(`[Redis] Status: ${res.status}, Response: "${responseText}" for key: ${key}`);
-
-      if (responseText === 'OK') {
+      // on first call res.data.result === 'OK'
+      if (res.data?.result === 'OK') {
          console.log('✅ First time, forwarding:', txnText);
          return false;
       }
@@ -36,10 +37,11 @@ async function isDuplicate(txnText) {
       console.log('🔁 Duplicate via Redis (atomic):', txnText);
       return true;
    } catch (err) {
-      console.error('⚠️ Redis dedupe error, fallback to allow:', err.message || err);
+      console.error('⚠️ Redis dedupe error, fallback to allow:', err.message);
       return false;
    }
 }
+
 
 
 
