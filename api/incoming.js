@@ -14,32 +14,33 @@ async function isDuplicate(txnText) {
    const url = `${process.env.UPSTASH_REST_URL}/set/${key}?NX=1&EX=10`;
 
    try {
-      const setRes = await fetch(url, {
-         method: 'POST',
-         headers: {
-            Authorization: `Bearer ${process.env.UPSTASH_REST_TOKEN}`,
-            'Content-Type': 'application/json',
-         },
-         body: JSON.stringify({ value: '1' }),
-      });
+      const res = await axios.post(
+         url,
+         { value: '1' },
+         {
+            headers: {
+               Authorization: `Bearer ${process.env.UPSTASH_REST_TOKEN}`,
+               'Content-Type': 'application/json',
+            },
+         }
+      );
 
-      const status = setRes.status;
-      const body = await setRes.text();
+      const responseText = res.data;
+      console.log(`[Redis] Status: ${res.status}, Response: "${responseText}" for key: ${key}`);
 
-      console.log(`[Redis] Status: ${status}, Response: "${body}" for key: ${key}`);
-
-      if (body === 'OK') {
+      if (responseText === 'OK') {
          console.log('✅ First time, forwarding:', txnText);
-         return false; // Not a duplicate
+         return false;
       }
 
       console.log('🔁 Duplicate via Redis (atomic):', txnText);
-      return true; // Duplicate
+      return true;
    } catch (err) {
-      console.error('⚠️ Redis dedupe check failed, proceeding as fallback:', err);
-      return false; // Fallback: proceed anyway if Redis fails
+      console.error('⚠️ Redis dedupe error, fallback to allow:', err.message || err);
+      return false;
    }
 }
+
 
 
 
