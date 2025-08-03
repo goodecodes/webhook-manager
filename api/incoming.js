@@ -14,21 +14,20 @@ async function isDuplicate(txnText) {
    const key =
       'dedupe:' + crypto.createHash('sha1').update(txnText).digest('hex');
 
-   // Upstash wants: /set/<key>/<value>/EX/<seconds>/NX
-   // e.g. SET key 1 EX 10 NX
+
    const url = `${process.env.UPSTASH_REST_URL}/set/${encodeURIComponent(
       key
-   )}/1/EX/10/NX`;
+   )}/1/EX/3/NX`;
 
    try {
-      // note: Upstash examples use GET for REST calls
+
       const res = await axios.get(url, {
          headers: {
             Authorization: `Bearer ${process.env.UPSTASH_REST_TOKEN}`,
          },
       });
 
-      // on first call res.data.result === 'OK'
+
       if (res.data?.result === 'OK') {
          console.log('✅ First time, forwarding:', txnText);
          return false;
