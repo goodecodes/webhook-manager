@@ -107,7 +107,7 @@ export default async function handler(req, res) {
          timestamp: embedPayload.timestamp ?? new Date().toISOString(),
          color: title === 'Deposit Made' ? 0x27ae60 : 0xe74c3c,
          footer: {
-            text: 'Chat Notification. Ensure plugin coverage for accuracy',
+            text: 'Chat Notification | Ensure plugin coverage for accuracy.',
          },
       };
 
