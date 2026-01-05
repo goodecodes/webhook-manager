@@ -3,33 +3,20 @@
 // Receives batched chat log events (JSON array), deduplicates each entry via Upstash Redis,
 // then forwards only “new” messages to a Discord channel.
 //
-// Expected payload example (array):
-// [
-//   {
-//     "id": 1417339442575,
-//     "timestamp": "2021-01-01T00:00:00.000000000Z",
-//     "chatType": "FRIENDS",
-//     "chatName": "player name",
-//     "sender": "player name",
-//     "rank": -1,
-//     "message": "Dasdasd"
-//   }
-// ]
+// Hybrid dedupe:
+//  1) ID dedupe (covers retries/replays)                    -> TTL default 60s
+//  2) Content-signature dedupe (covers multi-client dupes)  -> TTL default 10s
+//
+// Content signature uses a time bucket (default 5s) so repeating the same message later
+// won’t be incorrectly suppressed.
 
 import axios from "axios";
 import crypto from "crypto";
 
 const DISCORD_API = "https://discord.com/api/v10";
 
-/**
- * Optional config:
- * - By default, Next/Vercel body parsing is enabled (we want JSON parsing here).
- * - Do NOT disable bodyParser for this endpoint.
- */
 export const config = {
-   api: {
-      bodyParser: true,
-   },
+   api: { bodyParser: true },
 };
 
 function sha1(input) {
@@ -47,29 +34,58 @@ function chunkArray(arr, size) {
    return out;
 }
 
+function normalizeForSig(s) {
+   // Lowercase + trim + collapse whitespace to reduce cosmetic mismatches across clients
+   return toSafeString(s).toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function timestampBucket(timestampIso, bucketMs) {
+   const ms = Date.parse(timestampIso);
+   if (!Number.isFinite(ms)) return "0";
+   return String(Math.floor(ms / bucketMs));
+}
+
 /**
- * Dedupe a batch of message IDs using Upstash REST pipeline.
- * Uses: SET key 1 EX <ttl> NX
+ * Hybrid dedupe (ID + content signature) in one Upstash pipeline call.
  * Returns a boolean[] where true means "duplicate" and false means "new".
+ *
+ * Accept rule:
+ *  - Accept only if BOTH id-key and content-key are "OK" (set successfully).
+ *  - If any command errors for an item, fail-open for that item (allow it).
  */
-async function dedupeIdsAtomic(ids, scope, ttlSec) {
-   if (!Array.isArray(ids) || ids.length === 0) return [];
+async function dedupeMessagesAtomic(items, scope, idTtlSec, contentTtlSec, bucketMs) {
+   if (!Array.isArray(items) || items.length === 0) return [];
 
    const upstashUrl = process.env.UPSTASH_REST_URL;
    const upstashToken = process.env.UPSTASH_REST_TOKEN;
 
    if (!upstashUrl || !upstashToken) {
-      // If Redis isn’t configured, fail open (treat everything as new).
       console.warn("[chatlogger] Missing UPSTASH env vars, allowing all messages.");
-      return ids.map(() => false);
+      return items.map(() => false);
    }
 
-   // Build keys. Scope helps avoid collisions if you later support multiple users/clans.
-   const keys = ids.map((id) => `dedupe:chatlogger:${scope}:${id}`);
+   const idKeys = items.map((m) => `dedupe:chatlogger:id:${scope}:${m.id}`);
 
-   // Upstash REST pipeline expects a 2D array: [["CMD","arg1",...], ...]
-   // Docs: /pipeline with [["SET", key, value, "EX", ttl, "NX"], ...]
-   const commands = keys.map((key) => ["SET", key, "1", "EX", String(ttlSec), "NX"]);
+   // Content signature catches multi-client duplicates where IDs differ.
+   // Include a time bucket so the same phrase later isn't dropped.
+   const contentKeys = items.map((m) => {
+      const sig = [
+         normalizeForSig(m.chatType),
+         normalizeForSig(m.chatName),
+         normalizeForSig(m.sender),
+         normalizeForSig(m.message),
+         timestampBucket(m.timestamp, bucketMs),
+      ].join("|");
+
+      return `dedupe:chatlogger:content:${scope}:${sha1(sig)}`;
+   });
+
+   // Build one pipeline with 2 commands per item: [ID set NX] then [CONTENT set NX]
+   const commands = [];
+   for (let i = 0; i < items.length; i++) {
+      commands.push(["SET", idKeys[i], "1", "EX", String(idTtlSec), "NX"]);
+      commands.push(["SET", contentKeys[i], "1", "EX", String(contentTtlSec), "NX"]);
+   }
 
    try {
       const res = await axios.post(`${upstashUrl}/pipeline`, commands, {
@@ -82,20 +98,36 @@ async function dedupeIdsAtomic(ids, scope, ttlSec) {
 
       const results = Array.isArray(res.data) ? res.data : [];
 
-      // Each item is like { result: "OK" } if set, or { result: null } if NX failed,
-      // or { error: "..." } if something went wrong for that command.
-      return results.map((r) => {
-         if (r?.result === "OK") return false; // new
-         if (r?.error) {
-            // If a single command errors, fail open for that entry.
-            console.warn("[chatlogger] Redis pipeline item error, allowing:", r.error);
-            return false;
+      // Reconstruct per-item decision from pairs of results
+      const dupFlags = [];
+      for (let i = 0; i < items.length; i++) {
+         const idResult = results[i * 2];
+         const contentResult = results[i * 2 + 1];
+
+         const idErrored = !!idResult?.error;
+         const contentErrored = !!contentResult?.error;
+
+         if (idErrored || contentErrored) {
+            console.warn(
+               "[chatlogger] Redis pipeline item error(s), allowing:",
+               { idError: idResult?.error, contentError: contentResult?.error }
+            );
+            dupFlags.push(false); // fail open
+            continue;
          }
-         return true; // duplicate (NX failed => result null)
-      });
+
+         const idOk = idResult?.result === "OK";
+         const contentOk = contentResult?.result === "OK";
+
+         // Strict: accept only if both are new
+         const isDuplicate = !(idOk && contentOk);
+         dupFlags.push(isDuplicate);
+      }
+
+      return dupFlags;
    } catch (err) {
       console.error("[chatlogger] Redis pipeline error, fallback to allow:", err?.message);
-      return ids.map(() => false);
+      return items.map(() => false);
    }
 }
 
@@ -103,10 +135,10 @@ async function postDiscordEmbeds(embeds) {
    const channelId = process.env.CHATLOGGER_TARGET_CHANNEL_ID;
    const botToken = process.env.TEST_BOT_TOKEN;
 
-   if (!channelId) throw new Error("Missing CHATLOGGER_TARGET_CHANNEL_ID (or TARGET_CHANNEL_ID)");
-   if (!botToken) throw new Error("Missing DISCORD_BOT_TOKEN");
+   // Match your intent: no fallback + test bot token
+   if (!channelId) throw new Error("Missing CHATLOGGER_TARGET_CHANNEL_ID");
+   if (!botToken) throw new Error("Missing TEST_BOT_TOKEN");
 
-   // Send sequentially to be gentle on rate limits.
    for (const embed of embeds) {
       await axios.post(
          `${DISCORD_API}/channels/${channelId}/messages`,
@@ -133,9 +165,7 @@ export default async function handler(req, res) {
       return res.status(405).end(`Method ${req.method} Not Allowed`);
    }
 
-   // --- Auth (recommended by the plugin README) ---
-   // If you set CHATLOGGER_AUTH_TOKEN, we’ll require an exact match.
-   // If you don’t set it, we’ll allow requests but still scope dedupe by header value.
+   // --- Auth ---
    const authHeader = toSafeString(req.headers.authorization).trim();
    const expectedToken = toSafeString(process.env.CHATLOGGER_AUTH_TOKEN).trim();
 
@@ -145,21 +175,17 @@ export default async function handler(req, res) {
       }
    }
 
-   // Build a stable scope for dedupe keys:
-   // - If authHeader exists, hash it; else use "public".
+   // Namespace scope (not a dedupe identity; used to avoid collisions across tokens)
    const scope = authHeader ? sha1(authHeader).slice(0, 12) : "public";
 
    // --- Validate body ---
    const body = req.body;
-
    if (!Array.isArray(body)) {
       return res.status(400).json({ error: "Expected JSON array body." });
    }
 
-   // The plugin says up to 30; we’ll enforce a reasonable cap anyway.
    const rawItems = body.slice(0, 50);
 
-   // Normalize and validate items
    const items = rawItems
       .map((m, idx) => {
          const id = m?.id;
@@ -183,15 +209,32 @@ export default async function handler(req, res) {
       })
       .filter((x) => !x._invalid);
 
+   console.log(
+      "[chatlogger] incoming ids:",
+      items.map(m => ({
+         id: m.id,
+         sender: m.sender,
+         message: m.message,
+         timestamp: m.timestamp,
+      }))
+   );
+
+
    if (items.length === 0) {
       return res.status(400).json({ error: "No valid messages found in body." });
    }
 
-   // --- Deduplicate ---
-   const ttlSec = Number(process.env.CHATLOGGER_DEDUPE_TTL_SEC || 60);
-   const ids = items.map((x) => x.id);
+   // --- Dedupe settings ---
+   const idTtlSec = Number(process.env.CHATLOGGER_DEDUPE_TTL_SEC || 60);
 
-   const isDupFlags = await dedupeIdsAtomic(ids, scope, ttlSec);
+   // Content dedupe window should be short (just to catch multi-client near-simultaneous dupes)
+   const contentTtlSec = Number(process.env.CHATLOGGER_CONTENT_TTL_SEC || 10);
+
+   // Bucket messages by time to avoid dropping legitimate repeats later
+   const bucketMs = Number(process.env.CHATLOGGER_CONTENT_BUCKET_MS || 5000);
+
+   // --- Deduplicate (hybrid) ---
+   const isDupFlags = await dedupeMessagesAtomic(items, scope, idTtlSec, contentTtlSec, bucketMs);
 
    const accepted = [];
    let duplicates = 0;
@@ -201,19 +244,18 @@ export default async function handler(req, res) {
       else accepted.push(items[i]);
    }
 
-   // If all duplicates, no need to hit Discord
    if (accepted.length === 0) {
       return res.status(200).json({
          received: items.length,
          accepted: 0,
          duplicates,
-         ttlSec,
+         idTtlSec,
+         contentTtlSec,
+         bucketMs,
       });
    }
 
-   // --- Format + Forward to Discord ---
-   // To avoid rate limits, aggregate accepted messages into embeds with a handful of lines each.
-   // (Discord embed description limit is 4096 chars; we also keep line counts conservative.)
+   // --- Format + Forward ---
    const lines = accepted.map((m) => {
       const metaParts = [];
       if (m.chatType) metaParts.push(m.chatType);
@@ -225,14 +267,14 @@ export default async function handler(req, res) {
       return `**${who}**${meta}${when}\n${m.message}`;
    });
 
-   const lineChunks = chunkArray(lines, 6); // 6 messages per embed keeps descriptions short & readable
+   const lineChunks = chunkArray(lines, 6);
 
    const embeds = lineChunks.map((chunk, i) => ({
       title: i === 0 ? "Chat Logger" : "Chat Logger (cont.)",
       description: chunk.join("\n\n"),
       color: 0x3498db,
       footer: {
-         text: `Deduped via Redis • TTL ${ttlSec}s • ${accepted.length}/${items.length} accepted`,
+         text: `Deduped via Redis • idTTL ${idTtlSec}s • contentTTL ${contentTtlSec}s • ${accepted.length}/${items.length} accepted`,
       },
       timestamp: new Date().toISOString(),
    }));
@@ -244,7 +286,9 @@ export default async function handler(req, res) {
          received: items.length,
          accepted: accepted.length,
          duplicates,
-         ttlSec,
+         idTtlSec,
+         contentTtlSec,
+         bucketMs,
       });
    } catch (err) {
       console.error("[chatlogger] Discord send error status:", err.response?.status);
@@ -256,4 +300,3 @@ export default async function handler(req, res) {
       return res.status(status).json({ error: data });
    }
 }
-
