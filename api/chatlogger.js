@@ -265,7 +265,7 @@ export default async function handler(req, res) {
    const lineChunks = chunkArray(lines, 6);
 
    const embeds = lineChunks.map((chunk, i) => ({
-      title: i === 0 ? "Chat Logger" : "Chat Logger (cont.)",
+     // title: i === 0 ? "Chat Logger" : "Chat Logger (cont.)",
       description: chunk.join("\n\n"),
       color: 0x3498db,
    }));
@@ -291,6 +291,7 @@ export default async function handler(req, res) {
       return res.status(status).json({ error: data });
    }
 }
+
 
 
 
