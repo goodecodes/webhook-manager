@@ -271,7 +271,6 @@ export default async function handler(req, res) {
       footer: {
          text: `Deduped via Redis • idTTL ${idTtlSec}s • contentTTL ${contentTtlSec}s • ${accepted.length}/${items.length} accepted`,
       },
-      timestamp: new Date().toISOString(),
    }));
 
    try {
@@ -295,5 +294,6 @@ export default async function handler(req, res) {
       return res.status(status).json({ error: data });
    }
 }
+
 
 
