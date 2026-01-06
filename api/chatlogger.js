@@ -133,7 +133,7 @@ async function dedupeMessagesAtomic(items, scope, idTtlSec, contentTtlSec, bucke
 
 async function postDiscordEmbeds(embeds) {
    const channelId = process.env.CHATLOGGER_TARGET_CHANNEL_ID;
-   const botToken = process.env.TEST_BOT_TOKEN;
+   const botToken = process.env.DISCORD_BOT_TOKEN;
 
    // Match your intent: no fallback + test bot token
    if (!channelId) throw new Error("Missing CHATLOGGER_TARGET_CHANNEL_ID");
@@ -294,6 +294,7 @@ export default async function handler(req, res) {
       return res.status(status).json({ error: data });
    }
 }
+
 
 
 
