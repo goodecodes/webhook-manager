@@ -268,9 +268,9 @@ export default async function handler(req, res) {
       title: i === 0 ? "Chat Logger" : "Chat Logger (cont.)",
       description: chunk.join("\n\n"),
       color: 0x3498db,
-      footer: {
-         text: `Deduped via Redis • idTTL ${idTtlSec}s • contentTTL ${contentTtlSec}s • ${accepted.length}/${items.length} accepted`,
-      },
+      // footer: {
+      //    text: `Deduped via Redis • idTTL ${idTtlSec}s • contentTTL ${contentTtlSec}s • ${accepted.length}/${items.length} accepted`,
+      // },
    }));
 
    try {
@@ -294,6 +294,7 @@ export default async function handler(req, res) {
       return res.status(status).json({ error: data });
    }
 }
+
 
 
 
