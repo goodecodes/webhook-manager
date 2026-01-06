@@ -133,7 +133,7 @@ async function dedupeMessagesAtomic(items, scope, idTtlSec, contentTtlSec, bucke
 
 async function postDiscordEmbeds(embeds) {
    const channelId = process.env.CHATLOGGER_TARGET_CHANNEL_ID;
-   const botToken = process.env.DISCORD_BOT_TOKEN;
+   const botToken = process.env.TEST_BOT_TOKEN;
 
    // Match your intent: no fallback + test bot token
    if (!channelId) throw new Error("Missing CHATLOGGER_TARGET_CHANNEL_ID");
@@ -256,16 +256,11 @@ export default async function handler(req, res) {
    }
 
    // --- Format + Forward ---
-   const lines = accepted.map((m) => {
-      const metaParts = [];
-      if (m.chatType) metaParts.push(m.chatType);
-      if (m.chatName) metaParts.push(m.chatName);
-      const meta = metaParts.length ? ` (${metaParts.join(" • ")})` : "";
+  const lines = accepted.map((m) => {
+   const who = m.sender ? m.sender : "Unknown";
+   return `**${who}:**\n${m.message}`;
+});
 
-      const who = m.sender ? m.sender : "Unknown";
-      const when = m.timestamp ? ` — ${m.timestamp}` : "";
-      return `**${who}**${meta}${when}\n${m.message}`;
-   });
 
    const lineChunks = chunkArray(lines, 6);
 
@@ -300,4 +295,5 @@ export default async function handler(req, res) {
       return res.status(status).json({ error: data });
    }
 }
+
 
