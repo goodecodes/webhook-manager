@@ -7,8 +7,8 @@
 //  1) ID dedupe (covers retries/replays)                    -> TTL default 60s
 //  2) Content-signature dedupe (covers multi-client dupes)  -> TTL default 10s
 //
-// Content signature uses a time bucket (default 5s) so repeating the same message later
-// won’t be incorrectly suppressed.
+// IMPORTANT CHANGE:
+// Content signature NO LONGER uses a time bucket. The TTL itself is the time window.
 
 import axios from "axios";
 import crypto from "crypto";
@@ -39,10 +39,20 @@ function normalizeForSig(s) {
    return toSafeString(s).toLowerCase().trim().replace(/\s+/g, " ");
 }
 
-function timestampBucket(timestampIso, bucketMs) {
-   const ms = Date.parse(timestampIso);
-   if (!Number.isFinite(ms)) return "0";
-   return String(Math.floor(ms / bucketMs));
+/**
+ * Normalize RuneLite nanosecond-precision ISO timestamps to millisecond precision.
+ * Example:
+ *   2026-01-07T00:29:10.750931200Z  ->  2026-01-07T00:29:10.750Z
+ */
+function normalizeIsoTimestamp(timestampIso) {
+   const s = toSafeString(timestampIso).trim();
+   if (!s) return "";
+
+   // If we have ".<fraction>Z" truncate/pad fraction to 3 digits (ms)
+   return s.replace(/\.(\d{1,})Z$/, (match, frac) => {
+      const ms = frac.slice(0, 3).padEnd(3, "0");
+      return `.${ms}Z`;
+   });
 }
 
 /**
@@ -53,7 +63,7 @@ function timestampBucket(timestampIso, bucketMs) {
  *  - Accept only if BOTH id-key and content-key are "OK" (set successfully).
  *  - If any command errors for an item, fail-open for that item (allow it).
  */
-async function dedupeMessagesAtomic(items, scope, idTtlSec, contentTtlSec, bucketMs) {
+async function dedupeMessagesAtomic(items, scope, idTtlSec, contentTtlSec) {
    if (!Array.isArray(items) || items.length === 0) return [];
 
    const upstashUrl = process.env.UPSTASH_REST_URL;
@@ -67,14 +77,13 @@ async function dedupeMessagesAtomic(items, scope, idTtlSec, contentTtlSec, bucke
    const idKeys = items.map((m) => `dedupe:chatlogger:id:${scope}:${m.id}`);
 
    // Content signature catches multi-client duplicates where IDs differ.
-   // Include a time bucket so the same phrase later isn't dropped.
+   // IMPORTANT: no time bucket here — TTL is the time window.
    const contentKeys = items.map((m) => {
       const sig = [
          normalizeForSig(m.chatType),
          normalizeForSig(m.chatName),
          normalizeForSig(m.sender),
          normalizeForSig(m.message),
-         timestampBucket(m.timestamp, bucketMs),
       ].join("|");
 
       return `dedupe:chatlogger:content:${scope}:${sha1(sig)}`;
@@ -108,10 +117,10 @@ async function dedupeMessagesAtomic(items, scope, idTtlSec, contentTtlSec, bucke
          const contentErrored = !!contentResult?.error;
 
          if (idErrored || contentErrored) {
-            console.warn(
-               "[chatlogger] Redis pipeline item error(s), allowing:",
-               { idError: idResult?.error, contentError: contentResult?.error }
-            );
+            console.warn("[chatlogger] Redis pipeline item error(s), allowing:", {
+               idError: idResult?.error,
+               contentError: contentResult?.error,
+            });
             dupFlags.push(false); // fail open
             continue;
          }
@@ -175,8 +184,13 @@ export default async function handler(req, res) {
       }
    }
 
-   // Namespace scope (not a dedupe identity; used to avoid collisions across tokens)
-   const scope = authHeader ? sha1(authHeader).slice(0, 12) : "public";
+   // Namespace scope (used to avoid collisions across tokens)
+   // IMPORTANT: derive from expectedToken when present so it's stable across clients
+   const scope = expectedToken
+      ? sha1(expectedToken).slice(0, 12)
+      : authHeader
+        ? sha1(authHeader).slice(0, 12)
+        : "public";
 
    // --- Validate body ---
    const body = req.body;
@@ -190,7 +204,7 @@ export default async function handler(req, res) {
       .map((m, idx) => {
          const id = m?.id;
          const message = toSafeString(m?.message).trim();
-         const timestamp = toSafeString(m?.timestamp).trim();
+         const timestamp = normalizeIsoTimestamp(m?.timestamp);
          const chatType = toSafeString(m?.chatType).trim();
          const chatName = toSafeString(m?.chatName).trim();
          const sender = toSafeString(m?.sender).trim();
@@ -211,14 +225,13 @@ export default async function handler(req, res) {
 
    console.log(
       "[chatlogger] incoming ids:",
-      items.map(m => ({
+      items.map((m) => ({
          id: m.id,
          sender: m.sender,
          message: m.message,
          timestamp: m.timestamp,
       }))
    );
-
 
    if (items.length === 0) {
       return res.status(400).json({ error: "No valid messages found in body." });
@@ -230,11 +243,8 @@ export default async function handler(req, res) {
    // Content dedupe window should be short (just to catch multi-client near-simultaneous dupes)
    const contentTtlSec = Number(process.env.CHATLOGGER_CONTENT_TTL_SEC || 10);
 
-   // Bucket messages by time to avoid dropping legitimate repeats later
-   const bucketMs = Number(process.env.CHATLOGGER_CONTENT_BUCKET_MS || 5000);
-
    // --- Deduplicate (hybrid) ---
-   const isDupFlags = await dedupeMessagesAtomic(items, scope, idTtlSec, contentTtlSec, bucketMs);
+   const isDupFlags = await dedupeMessagesAtomic(items, scope, idTtlSec, contentTtlSec);
 
    const accepted = [];
    let duplicates = 0;
@@ -251,21 +261,18 @@ export default async function handler(req, res) {
          duplicates,
          idTtlSec,
          contentTtlSec,
-         bucketMs,
       });
    }
 
    // --- Format + Forward ---
-  const lines = accepted.map((m) => {
-   const who = m.sender ? m.sender : "Unknown";
-   return `**${who}:**\n${m.message}`;
-});
-
+   const lines = accepted.map((m) => {
+      const who = m.sender ? m.sender : "Unknown";
+      return `**${who}:** ${m.message}`;
+   });
 
    const lineChunks = chunkArray(lines, 6);
 
-   const embeds = lineChunks.map((chunk, i) => ({
-     // title: i === 0 ? "Chat Logger" : "Chat Logger (cont.)",
+   const embeds = lineChunks.map((chunk) => ({
       description: chunk.join("\n\n"),
       color: 0x3498db,
    }));
@@ -279,7 +286,6 @@ export default async function handler(req, res) {
          duplicates,
          idTtlSec,
          contentTtlSec,
-         bucketMs,
       });
    } catch (err) {
       console.error("[chatlogger] Discord send error status:", err.response?.status);
@@ -291,10 +297,3 @@ export default async function handler(req, res) {
       return res.status(status).json({ error: data });
    }
 }
-
-
-
-
-
-
-
