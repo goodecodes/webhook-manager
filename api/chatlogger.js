@@ -208,6 +208,7 @@ export default async function handler(req, res) {
          const chatType = toSafeString(m?.chatType).trim();
          const chatName = toSafeString(m?.chatName).trim();
          const sender = toSafeString(m?.sender).trim();
+         const rank = Number.isInteger(m?.rank) ? m.rank : m?.rank ?? null;
 
          if (id === null || id === undefined) return { _invalid: true, _idx: idx };
          if (!message) return { _invalid: true, _idx: idx };
@@ -219,6 +220,7 @@ export default async function handler(req, res) {
             chatType,
             chatName,
             sender,
+            rank
          };
       })
       .filter((x) => !x._invalid);
@@ -229,6 +231,7 @@ export default async function handler(req, res) {
          id: m.id,
          sender: m.sender,
          message: m.message,
+         rank: m.rank,
          timestamp: m.timestamp,
       }))
    );
@@ -297,3 +300,4 @@ export default async function handler(req, res) {
       return res.status(status).json({ error: data });
    }
 }
+
