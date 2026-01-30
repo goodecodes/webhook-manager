@@ -55,6 +55,67 @@ function normalizeIsoTimestamp(timestampIso) {
    });
 }
 
+const MEMBER_RANK_EMOJI = {
+   0: '<:dogsbody_clan:1465907271044305108>', // dogsbody 0 [CONFIRMED]
+   10: '<:serenist_clan:1465907269995729090>', // serenist 10? [CONFIRMED]
+   20: '<:gatherer_clan:1463556335894532250>', // gatherer 20? [CONFIRMED]
+   30: '<:pvmfocused_clan:1463556373370634280>', // slayer 30? [CONFIRMED]
+   40: '<:smiter_clan:1463556337354018816>', // smiter probably 40 [CONFIRMED]
+   50: '<:firecape_clan:1463556298036740350>', // firecape probably 50 [CONFIRMED]
+   60: '<:myth_clan:1463556333398655138>', // myth probably 60 [CONFIRMED]
+   70: '<:clogger_clan:1463556374091792604>', // clogg 70 [CONFIRMED]
+   80: '<:questcape_clan:1463556299412209744>', // quest cape 80 [CONFIRMED]
+   90: '<:diary_clan:1463556375538827376>', // diary cape probably 90  [CONFIRMED]
+   95: '<:raider_clan:1463556332236832986>', // raider 95 [CONFIRMED]
+   96: '<:elite_clan:1463556330819289169>', // elite [CONFIRMED]
+   97: '<:infernal_clan:1463556296958542093>', //infernal 97 [CONFIRMED]
+   98: '<:maxed_clan:1463556295755038721>', // maxed ?? 98??
+   99: '<:beat_clan:1463556294358335611>', // beast ?? 99??
+};
+
+const STAFF_RANK_EMOJI = {
+   100: '', // not in use (administrator) [CONFIRMED]
+   101: '<:sotw_clan:1465907273724461152>', // skill of the week /** */
+   102: '<:botw_clan:1465907272860569610>', // boss of the week 102 [CONFIRMED]
+   103: '<:99sailingwinner:1466100128115986596>', // sailing comp winners /**  */
+   104: '', // not in use
+   105: '', // teacher /** <:teacher_clan:1465907271946207315> */
+   110: '<:events_clan:1465907290061275187>', // event coordinator 110 [CONFIRMED]
+   115: '<:admiral_clan:1465907245199134993>', // admiral (current mod role) 115 [CONFIRMED]
+   108: '', // high risker/121hp /** <:paladin_clan:1465907245953847327> */
+   109: '', // not in use (marshal)
+   125: '<:deputy_clan:1465907244326453414>', // deputy owner 125 [CONFIRMED]
+   126: '<:owner_clan:1465907243378540718>', // owner [CONFIRMED]
+};
+
+
+function rankToEmoji(rank) {
+   // Your plugin sometimes emits null-ish ranks; normalize
+   const r = Number.isInteger(rank) ? rank : Number(rank);
+
+   // Unknown / missing
+   if (!Number.isFinite(r)) return '';
+
+   // Optional: ignore your sentinel (you already filter -2 out)
+   if (r === -2) return '';
+
+   // Guest
+   if (r === -1) return '<:guest_clan:1465907242497868050>';
+
+   // Member ranks: anything below 100
+   if (r >= 0 && r < 100) {
+      return MEMBER_RANK_EMOJI[r] ?? '🔹';
+   }
+
+
+   // Staff / leadership (RuneLite uses 3-digit IDs here)
+   if (r >= 100) {
+      return STAFF_RANK_EMOJI[r] ?? '🛡️';
+   }
+   return '❓';
+}
+
+
 /**
  * Hybrid dedupe (ID + content signature) in one Upstash pipeline call.
  * Returns a boolean[] where true means "duplicate" and false means "new".
@@ -227,12 +288,6 @@ export default async function handler(req, res) {
 
    const filteredItems = items.filter((m) => m.rank !== -2);
 
-   /** micro-polish */
-   //    const filteredItems = items.filter(
-   //   (m) => !(m.chatType === "CLAN" && m.rank === -2)
-   // );
-
-
    console.log(
       "[chatlogger] incoming ids:",
       filteredItems.map((m) => ({
@@ -243,8 +298,6 @@ export default async function handler(req, res) {
          timestamp: m.timestamp,
       }))
    );
-
-
 
    if (filteredItems.length === 0) {
       return res.status(400).json({ error: "No valid messages found in body." });
@@ -280,7 +333,9 @@ export default async function handler(req, res) {
    // --- Format + Forward ---
    const lines = accepted.map((m) => {
       const who = m.sender ? m.sender : "Unknown";
-      return `**${who}:** ${m.message}`;
+      const emoji = rankToEmoji(m.rank);
+      const prefix = emoji ? `${emoji} ${who}` : who;
+      return `**${prefix}:** ${m.message}`;
    });
 
    const lineChunks = chunkArray(lines, 6);
