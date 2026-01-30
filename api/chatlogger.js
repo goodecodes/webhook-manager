@@ -189,8 +189,8 @@ export default async function handler(req, res) {
    const scope = expectedToken
       ? sha1(expectedToken).slice(0, 12)
       : authHeader
-        ? sha1(authHeader).slice(0, 12)
-        : "public";
+         ? sha1(authHeader).slice(0, 12)
+         : "public";
 
    // --- Validate body ---
    const body = req.body;
@@ -225,9 +225,17 @@ export default async function handler(req, res) {
       })
       .filter((x) => !x._invalid);
 
+   const filteredItems = items.filter((m) => m.rank !== -2);
+
+   /** micro-polish */
+   //    const filteredItems = items.filter(
+   //   (m) => !(m.chatType === "CLAN" && m.rank === -2)
+   // );
+
+
    console.log(
       "[chatlogger] incoming ids:",
-      items.map((m) => ({
+      filteredItems.map((m) => ({
          id: m.id,
          sender: m.sender,
          message: m.message,
@@ -236,7 +244,9 @@ export default async function handler(req, res) {
       }))
    );
 
-   if (items.length === 0) {
+
+
+   if (filteredItems.length === 0) {
       return res.status(400).json({ error: "No valid messages found in body." });
    }
 
@@ -247,19 +257,19 @@ export default async function handler(req, res) {
    const contentTtlSec = Number(process.env.CHATLOGGER_CONTENT_TTL_SEC || 10);
 
    // --- Deduplicate (hybrid) ---
-   const isDupFlags = await dedupeMessagesAtomic(items, scope, idTtlSec, contentTtlSec);
+   const isDupFlags = await dedupeMessagesAtomic(filteredItems, scope, idTtlSec, contentTtlSec);
 
    const accepted = [];
    let duplicates = 0;
 
-   for (let i = 0; i < items.length; i++) {
+   for (let i = 0; i < filteredItems.length; i++) {
       if (isDupFlags[i]) duplicates++;
-      else accepted.push(items[i]);
+      else accepted.push(filteredItems[i]);
    }
 
    if (accepted.length === 0) {
       return res.status(200).json({
-         received: items.length,
+         received: filteredItems.length,
          accepted: 0,
          duplicates,
          idTtlSec,
@@ -284,7 +294,7 @@ export default async function handler(req, res) {
       await postDiscordEmbeds(embeds);
 
       return res.status(200).json({
-         received: items.length,
+         received: filteredItems.length,
          accepted: accepted.length,
          duplicates,
          idTtlSec,
