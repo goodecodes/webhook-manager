@@ -79,7 +79,7 @@ const STAFF_RANK_EMOJI = {
    102: '<:botw_clan:1465907272860569610>', // boss of the week 102 [CONFIRMED]
    103: '<:99sailingwinner:1466100128115986596>', // sailing comp winners /**  */
    104: '', // not in use
-   105: '', // teacher /** <:teacher_clan:1465907271946207315> */
+   105: '<:teacher_clan:1465907271946207315>', // teacher /**[CONFIRMED]  */
    110: '<:events_clan:1465907290061275187>', // event coordinator 110 [CONFIRMED]
    115: '<:admiral_clan:1465907245199134993>', // admiral (current mod role) 115 [CONFIRMED]
    108: '', // high risker/121hp /** <:paladin_clan:1465907245953847327> */
@@ -365,4 +365,5 @@ export default async function handler(req, res) {
       return res.status(status).json({ error: data });
    }
 }
+
 
