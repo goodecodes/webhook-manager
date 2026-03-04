@@ -106,7 +106,7 @@ export default async function handler(req, res) {
          description: embedPayload.description || txnText,
          color: title === 'Deposit Made' ? 0x27ae60 : 0xe74c3c,
          footer: {
-            text: 'Chat Notification | Ensure plugin coverage for accuracy.',
+            text: 'Chat Notification | Ensure plugin coverage for accuracy',
          },
       };
 
