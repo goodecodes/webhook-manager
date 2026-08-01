@@ -100,7 +100,7 @@ function rankToEmoji(rank) {
    if (r === -2) return '';
 
    // Guest
-   if (r === -1) return '<:Clan_icon_Guest:1524414330060280032>';
+   if (r === -1) return '<:crown_gold_rb:1532812326632296488>';
 
    // Member ranks: anything below 100
    if (r >= 0 && r < 100) {
