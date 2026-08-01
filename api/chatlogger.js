@@ -100,7 +100,7 @@ function rankToEmoji(rank) {
    if (r === -2) return '';
 
    // Guest
-   if (r === -1) return '<:crown_gold_rb:1532812326632296488>';
+   if (r === -1) return '<:Clan_icon_Guest:1524414330060280032>';
 
    // Member ranks: anything below 100
    if (r >= 0 && r < 100) {
@@ -110,7 +110,7 @@ function rankToEmoji(rank) {
 
    // Staff / leadership (RuneLite uses 3-digit IDs here)
    if (r >= 100) {
-      return STAFF_RANK_EMOJI[r] ?? '<:goldcrown_rb:1531720749147226162>';
+      return STAFF_RANK_EMOJI[r] ?? '<:crown_gold_rb:1532811982682460258>';
    }
    return '❓';
 }
