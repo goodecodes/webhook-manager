@@ -56,7 +56,7 @@ function normalizeIsoTimestamp(timestampIso) {
 }
 
 const MEMBER_RANK_EMOJI = {
-   '-1': '<:guest_clan:1533203335983661066>',
+   '-1': '<:guest_rank:1533206759366459574>',
    0: '<:dogsbody_clan:1465907271044305108>', // dogsbody 0 [CONFIRMED]
    10: '<:serenist_clan:1465907269995729090>', // serenist 10? [CONFIRMED]
    20: '<:gatherer_clan:1463556335894532250>', // gatherer 20? [CONFIRMED]
