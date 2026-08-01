@@ -104,13 +104,13 @@ function rankToEmoji(rank) {
 
    // Member ranks: anything below 100
    if (r >= 0 && r < 100) {
-      return MEMBER_RANK_EMOJI[r] ?? '🔹';
+      return MEMBER_RANK_EMOJI[r] ?? '<:osrs_rb:1532173160240386108>';
    }
 
 
    // Staff / leadership (RuneLite uses 3-digit IDs here)
    if (r >= 100) {
-      return STAFF_RANK_EMOJI[r] ?? '🛡️';
+      return STAFF_RANK_EMOJI[r] ?? '<:goldcrown_rb:1531720749147226162>';
    }
    return '❓';
 }
