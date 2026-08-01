@@ -56,6 +56,7 @@ function normalizeIsoTimestamp(timestampIso) {
 }
 
 const MEMBER_RANK_EMOJI = {
+   -1: '<:guest_clan:1533203335983661066>'
    0: '<:dogsbody_clan:1465907271044305108>', // dogsbody 0 [CONFIRMED]
    10: '<:serenist_clan:1465907269995729090>', // serenist 10? [CONFIRMED]
    20: '<:gatherer_clan:1463556335894532250>', // gatherer 20? [CONFIRMED]
@@ -70,7 +71,7 @@ const MEMBER_RANK_EMOJI = {
    96: '<:elite_clan:1463556330819289169>', // elite [CONFIRMED]
    97: '<:infernal_clan:1463556296958542093>', //infernal 97 [CONFIRMED]
    98: '<:maxed_clan:1463556295755038721>', // maxed ?? 98??
-   99: '<:beat_clan:1463556294358335611>', // beast ?? 99??
+   99: '<:beast_clan:1463556294358335611>', // beast ?? 99??
 };
 
 const STAFF_RANK_EMOJI = {
