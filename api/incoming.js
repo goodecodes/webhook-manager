@@ -122,7 +122,7 @@ export default async function handler(req, res) {
   };
 
   const embed = {
-    title: `<:Discord_category_collapsed_white:1394059288619782226> ${title}`,
+    title: `<:connection_rb:1533227181545881781> ${title}`,
     description: embedPayload.description || txnText,
     color: title === 'Deposit Made' ? 0x27ae60 : 0xe74c3c,
     footer: { text: 'Chat Notification | Ensure plugin coverage for accuracy' },
