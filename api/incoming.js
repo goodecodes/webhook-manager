@@ -141,25 +141,13 @@ export default async function handler(req, res) {
       footer: { text: 'Chat Notification | Ensure plugin coverage for accuracy' },
    };
 
-   // Attach as a thumbnail (compact, top-right) rather than the full-width
-   // `image` field, so the embed's height doesn't grow when a screenshot
-   // is present.
+   // Deliberately not attaching Dink's screenshot. Every online clan member
+   // running Dink with "Send Image" enabled fires on the same broadcast, and
+   // Dink has no concept of "is this transaction mine" to gate on — unlike
+   // the RuneLite plugin, there's no way to ever verify whose client actually
+   // made the transaction. Rather than post a screenshot that may belong to
+   // an uninvolved member, don't attach one at all.
    let form = null;
-
-   if (file) {
-      const filepath = file.filepath || file.path; // formidable v3 vs v2
-      const filename = file.originalFilename || file.name || 'screenshot.png';
-      const mimetype = file.mimetype || file.type || 'image/png';
-
-      embed.thumbnail = { url: `attachment://${filename}` };
-
-      form = new FormData();
-      form.append('payload_json', JSON.stringify({ embeds: [embed] }));
-      form.append('files[0]', fs.createReadStream(filepath), {
-         filename,
-         contentType: mimetype,
-      });
-   }
 
    // Forward to Discord
    try {
